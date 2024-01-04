@@ -1,1 +1,1 @@
-# Arduino code of radar project for embeded system course
+# Arduino code of Radar project for embedded system course
