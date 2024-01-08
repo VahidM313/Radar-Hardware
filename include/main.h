@@ -20,4 +20,5 @@ void setupWifi();
 void reconnect();
 void publishData(int distance,int degree);
 void calculateDistance();
+void callback(char* topic, byte* payload, unsigned int length);
 #endif

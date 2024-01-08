@@ -2,7 +2,7 @@
 
 const char *ssid = "VahidM313";
 const char *password = "abc123abc";
-const char *mqttServer = "192.168.108.251";
+const char *mqttServer = "172.18.221.233";
 constexpr int mqttPort = 1883;
 const char *mqttTopic = "radar/data";
 
@@ -16,8 +16,8 @@ Servo servo;
 unsigned long moveStartTime;
 int distance{};
 
-int pos = 90;         // variable to store the servo position
-int incomingByte = 0; // for incoming serial data
+const int rightMove{85}, leftMove{99}, brake{90};
+int incomingByte = 0;
 
 int degree{};
 enum direction { stop, right, left };
@@ -33,67 +33,50 @@ void setup() {
   ESP32PWM::allocateTimer(3);
   servo.setPeriodHertz(50); // standard 50 hz servo
   servo.attach(servoPin);
-  servo.write(90);
+  servo.write(brake);
   delay(2);
   // moveStartTime = millis();
 
   setupWifi();
   client.setServer(mqttServer, 1883);
+  client.setCallback(callback); 
 }
 
 void loop() {
   if (!client.connected())
-      reconnect();
+    reconnect();
   client.loop();
-  if (Serial.available() > 0) {
-    // read the incoming byte:
-    incomingByte = Serial.read();
-    // say what you got:
-    Serial.print("received: ");
-    Serial.print(incomingByte);
-    if (incomingByte == 108) {
-      dir = left;
-      Serial.println(" rotating left ");
-      degree = 360;
-    } else if (incomingByte == 114) {
-      dir = right;
-      Serial.println(" rotating right ");
-      degree = 0;
-    } else if (incomingByte == 115) {
-      dir = stop;
-      Serial.println(" Stopped ");
-      servo.write(90);
-    } else {
-      Serial.println(" moving Random");
-      servo.write(incomingByte);
-    }
-  }
-  if (degree > 360 && dir == right) {
+  if (degree > 91 && dir == right) {
     dir = left;
-    servo.write(90);
+    degree = 360;
+    servo.write(brake);
     delay(500);
-  } else if (degree < 0 && dir == left) {
+  } else if (degree < 280 && dir == left) {
     dir = right;
-    servo.write(90);
+    degree = 0;
+    servo.write(brake);
     delay(500);
   } else if (dir == stop) {
-    servo.write(90);
+    servo.write(brake);
+    if (degree)
+      printf("\n %d degree \n", degree);
     degree = 0;
   } else if (dir == right) {
     degree++;
-    servo.write(85);
-    // servo.write(80);
+    servo.write(rightMove);
     delay(15);
   } else if (dir == left) {
-    servo.write(99);
-    // servo.write(105);
-    delay(14);
     degree--;
+    servo.write(leftMove);
+    delay(14);
   }
   calculateDistance();
-  publishData(distance, degree);
-  Serial.printf("degree: %d, distance: %d\n", degree, distance);
-  // delay(500);
+  if (dir == right) {
+    publishData(distance, map(degree,0,91,0,360));
+
+  } else if (dir == left) {
+    publishData(distance, map(degree,360,280,360,0));
+  }
 }
 
 void calculateDistance() {
@@ -135,6 +118,7 @@ void reconnect() {
     Serial.print("Attempting MQTT connection...");
     if (client.connect("ESP32Client")) {
       Serial.println("connected");
+      client.subscribe("radar/control");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -151,4 +135,31 @@ void publishData(const int distance, const int degree) {
   char payload[64];
   serializeJson(doc, payload);
   client.publish(mqttTopic, payload);
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  String control = "";
+  for (unsigned int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+    control += (char)payload[i];
+  }
+  Serial.println();
+
+  Serial.println(control);
+  if (control == "stop") {
+    dir = stop;
+    Serial.println("stop callback");
+  } else if (control == "left") {
+    dir = left;
+    Serial.println("left callback");
+    degree = 360;
+  } else if (control == "right") {
+    dir = right;
+    Serial.println("right callback");
+    degree = 0;
+  }
+  printf("\ndir: %d\n",dir);
 }
